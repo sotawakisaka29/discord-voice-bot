@@ -10,6 +10,7 @@ const {
   Events,
   GatewayIntentBits,
   MessageFlags,
+  PermissionFlagsBits,
   REST,
   Routes,
   SlashCommandBuilder,
@@ -27,9 +28,12 @@ const {
 
 const token = process.env.DISCORD_BOT_TOKEN;
 const guildId = process.env.DISCORD_GUILD_ID;
-const macosVoice = process.env.MACOS_TTS_VOICE || "com.apple.voice.compact.ja-JP.Kyoko";
 const run = promisify(execFile);
 const playbackQueues = new Map();
+const voiceProfilesPath = path.join(__dirname, "voices.json");
+const guildVoiceSettingsPath = path.join(__dirname, "data", "guild-voices.json");
+let voiceProfiles = new Map();
+let guildVoiceIds = new Map();
 
 if (!token) {
   throw new Error("DISCORD_BOT_TOKEN が .env に設定されていません。");
@@ -60,10 +64,26 @@ const commands = [
         .setDescription("読み上げる文章")
         .setRequired(true),
     ),
+  new SlashCommandBuilder()
+    .setName("voices")
+    .setDescription("利用できる声の一覧を表示します。"),
+  new SlashCommandBuilder()
+    .setName("setvoice")
+    .setDescription("このサーバーで使う声を切り替えます。")
+    .addStringOption((option) =>
+      option
+        .setName("voice")
+        .setDescription("voices.json に登録した声のID")
+        .setRequired(true),
+    ),
 ].map((command) => command.toJSON());
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
+});
+
+client.on("error", (error) => {
+  console.error("Discord client error:", error);
 });
 
 function createPlaybackQueue(guildId) {
@@ -134,14 +154,47 @@ function clearPlaybackQueue(guildId) {
   }
 }
 
+async function loadVoiceProfiles() {
+  const contents = await fs.readFile(voiceProfilesPath, "utf8");
+  const profiles = JSON.parse(contents).voices;
+  if (!Array.isArray(profiles) || profiles.length === 0) {
+    throw new Error("voices.json に少なくとも1つの声を登録してください。");
+  }
+
+  voiceProfiles = new Map(profiles.map((profile) => [profile.id, profile]));
+}
+
+async function loadGuildVoiceSettings() {
+  await fs.mkdir(path.dirname(guildVoiceSettingsPath), { recursive: true });
+  try {
+    const contents = await fs.readFile(guildVoiceSettingsPath, "utf8");
+    guildVoiceIds = new Map(Object.entries(JSON.parse(contents)));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+}
+
+async function saveGuildVoiceSettings() {
+  await fs.writeFile(
+    guildVoiceSettingsPath,
+    `${JSON.stringify(Object.fromEntries(guildVoiceIds), null, 2)}\n`,
+  );
+}
+
+function getSelectedVoice(guildId) {
+  return voiceProfiles.get(guildVoiceIds.get(guildId)) || voiceProfiles.values().next().value;
+}
+
 client.once(Events.ClientReady, async (readyClient) => {
+  await loadVoiceProfiles();
+  await loadGuildVoiceSettings();
   const rest = new REST({ version: "10" }).setToken(token);
   await rest.put(
     Routes.applicationGuildCommands(readyClient.user.id, guildId),
     { body: commands },
   );
   console.log(`${readyClient.user.tag} としてログインしました。`);
-  console.log("テストサーバーへ /ping と /join を登録しました。");
+  console.log("テストサーバーへスラッシュコマンドを登録しました。");
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -149,6 +202,46 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.commandName === "ping") {
     await interaction.reply("Pong!");
+    return;
+  }
+
+  if (interaction.commandName === "voices") {
+    const selectedVoice = getSelectedVoice(interaction.guildId);
+    const list = [...voiceProfiles.values()]
+      .map((voice) => `${voice.id === selectedVoice.id ? "•" : " "} ${voice.id} — ${voice.label}`)
+      .join("\n");
+    await interaction.reply({
+      content: `利用できる声:\n${list}`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (interaction.commandName === "setvoice") {
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+      await interaction.reply({
+        content: "この操作にはサーバーの管理権限が必要です。",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const voiceId = interaction.options.getString("voice", true);
+    const voice = voiceProfiles.get(voiceId);
+    if (!voice) {
+      await interaction.reply({
+        content: "その声は登録されていません。/voices で一覧を確認してください。",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    guildVoiceIds.set(interaction.guildId, voiceId);
+    await saveGuildVoiceSettings();
+    await interaction.reply({
+      content: `読み上げる声を「${voice.label}」に切り替えました。`,
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 
@@ -202,6 +295,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
+    const selectedVoice = getSelectedVoice(interaction.guildId);
+    if (selectedVoice.engine !== "macos") {
+      await interaction.reply({
+        content: "この声のGPT-SoVITS連携はまだ設定されていません。",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const text = interaction.options.getString("text", true);
     const tempDir = path.join(__dirname, "tmp");
@@ -213,7 +315,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await fs.mkdir(tempDir, { recursive: true });
       await run("swift", [
         path.join(__dirname, "scripts", "macos-tts.swift"),
-        macosVoice,
+        selectedVoice.macosVoice,
         text,
         aiffPath,
       ]);

@@ -1,0 +1,10 @@
+{
+  "voices": [
+    {
+      "id": "kyoko",
+      "label": "Kyoko (macOS)",
+      "engine": "macos",
+      "macosVoice": "com.apple.voice.compact.ja-JP.Kyoko"
+    }
+  ]
+}

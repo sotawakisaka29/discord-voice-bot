@@ -45,6 +45,8 @@ generated_audio/
 *.ogg
 
 # Runtime files and logs
+data/*
+!data/.gitkeep
 logs/
 *.log
 *.pid
@@ -54,4 +56,3 @@ logs/
 .idea/
 .vscode/
 *.swp
-
