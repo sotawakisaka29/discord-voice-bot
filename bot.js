@@ -4,12 +4,14 @@ const {
   Client,
   Events,
   GatewayIntentBits,
+  MessageFlags,
   REST,
   Routes,
   SlashCommandBuilder,
 } = require("discord.js");
 const {
   entersState,
+  getVoiceConnection,
   joinVoiceChannel,
   VoiceConnectionStatus,
 } = require("@discordjs/voice");
@@ -31,6 +33,9 @@ const commands = [
   new SlashCommandBuilder()
     .setName("join")
     .setDescription("あなたが参加中のボイスチャンネルへ接続します。"),
+  new SlashCommandBuilder()
+    .setName("leave")
+    .setDescription("ボイスチャンネルから退出します。"),
 ].map((command) => command.toJSON());
 
 const client = new Client({
@@ -55,18 +60,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
+  if (interaction.commandName === "leave") {
+    const connection = getVoiceConnection(interaction.guildId);
+    if (!connection) {
+      await interaction.reply({
+        content: "ボイスチャンネルには接続していません。",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    connection.destroy();
+    await interaction.reply({
+      content: "ボイスチャンネルから退出しました。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
   if (interaction.commandName !== "join") return;
 
   const voiceChannel = interaction.member?.voice?.channel;
   if (!voiceChannel) {
     await interaction.reply({
       content: "先にボイスチャンネルへ参加してください。",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const connection = joinVoiceChannel({
     channelId: voiceChannel.id,
     guildId: interaction.guildId,
