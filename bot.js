@@ -29,6 +29,7 @@ const token = process.env.DISCORD_BOT_TOKEN;
 const guildId = process.env.DISCORD_GUILD_ID;
 const macosVoice = process.env.MACOS_TTS_VOICE || "com.apple.voice.compact.ja-JP.Kyoko";
 const run = promisify(execFile);
+const playbackQueues = new Map();
 
 if (!token) {
   throw new Error("DISCORD_BOT_TOKEN が .env に設定されていません。");
@@ -65,6 +66,74 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
 });
 
+function createPlaybackQueue(guildId) {
+  const player = createAudioPlayer({
+    behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
+  });
+  const queue = { guildId, player, entries: [], current: null, subscription: null };
+
+  player.on(AudioPlayerStatus.Idle, () => advanceQueue(queue));
+  player.on("error", (error) => {
+    console.error("Audio playback failed:", error);
+    advanceQueue(queue);
+  });
+  playbackQueues.set(guildId, queue);
+  return queue;
+}
+
+function getPlaybackQueue(guildId) {
+  return playbackQueues.get(guildId) || createPlaybackQueue(guildId);
+}
+
+function startNext(queue) {
+  if (queue.current || playbackQueues.get(queue.guildId) !== queue) return;
+
+  const next = queue.entries.shift();
+  if (!next) return;
+
+  const connection = getVoiceConnection(queue.guildId);
+  if (!connection) {
+    Promise.resolve(next.cleanup?.()).catch(console.error);
+    startNext(queue);
+    return;
+  }
+
+  queue.current = next;
+  queue.subscription?.unsubscribe();
+  queue.subscription = connection.subscribe(queue.player);
+  queue.player.play(createAudioResource(next.filePath));
+}
+
+function advanceQueue(queue) {
+  if (playbackQueues.get(queue.guildId) !== queue) return;
+
+  const finished = queue.current;
+  queue.current = null;
+  Promise.resolve(finished?.cleanup?.())
+    .catch((error) => console.error("Audio cleanup failed:", error))
+    .finally(() => startNext(queue));
+}
+
+function enqueueAudio(guildId, entry) {
+  const queue = getPlaybackQueue(guildId);
+  const position = queue.entries.length + (queue.current ? 1 : 0) + 1;
+  queue.entries.push(entry);
+  startNext(queue);
+  return position;
+}
+
+function clearPlaybackQueue(guildId) {
+  const queue = playbackQueues.get(guildId);
+  if (!queue) return;
+
+  playbackQueues.delete(guildId);
+  queue.player.stop(true);
+  queue.subscription?.unsubscribe();
+  for (const entry of [queue.current, ...queue.entries]) {
+    Promise.resolve(entry?.cleanup?.()).catch(console.error);
+  }
+}
+
 client.once(Events.ClientReady, async (readyClient) => {
   const rest = new REST({ version: "10" }).setToken(token);
   await rest.put(
@@ -93,6 +162,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
+    clearPlaybackQueue(interaction.guildId);
     connection.destroy();
     await interaction.reply({
       content: "ボイスチャンネルから退出しました。",
@@ -111,18 +181,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    const player = createAudioPlayer({
-      behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
+    const position = enqueueAudio(interaction.guildId, {
+      filePath: path.join(__dirname, "assets", "test.mp3"),
     });
-    const subscription = connection.subscribe(player);
-    const resource = createAudioResource(path.join(__dirname, "assets", "test.mp3"));
-
-    player.once(AudioPlayerStatus.Idle, () => subscription?.unsubscribe());
-    player.on("error", (error) => console.error("Audio playback failed:", error));
-    player.play(resource);
 
     await interaction.reply({
-      content: "テスト音を再生します。",
+      content: position === 1 ? "テスト音を再生します。" : `テスト音を待ち行列の${position}番目に追加しました。`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -156,22 +220,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await run("ffmpeg", ["-i", aiffPath, "-q:a", "4", "-y", mp3Path]);
       await fs.rm(aiffPath, { force: true });
 
-      const player = createAudioPlayer({
-        behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
+      const position = enqueueAudio(interaction.guildId, {
+        filePath: mp3Path,
+        cleanup: () => fs.rm(mp3Path, { force: true }),
       });
-      const subscription = connection.subscribe(player);
-      const cleanup = async () => {
-        subscription?.unsubscribe();
-        await fs.rm(mp3Path, { force: true });
-      };
-
-      player.once(AudioPlayerStatus.Idle, cleanup);
-      player.once("error", async (error) => {
-        console.error("Text-to-speech playback failed:", error);
-        await cleanup();
-      });
-      player.play(createAudioResource(mp3Path));
-      await interaction.editReply("読み上げます。");
+      await interaction.editReply(
+        position === 1 ? "読み上げます。" : `読み上げを待ち行列の${position}番目に追加しました。`,
+      );
     } catch (error) {
       await fs.rm(aiffPath, { force: true });
       await fs.rm(mp3Path, { force: true });
