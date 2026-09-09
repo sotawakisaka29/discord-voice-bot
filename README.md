@@ -59,3 +59,6 @@
 
 途中で「次へ進んで」「この案で実装して」「Git 操作をして」と伝えてください。Git 操作は、対象ファイルとコミットメッセージを確認したうえで行います。
 
+##参考URL
+
+https://app.notion.com/p/Discord-Voice-Clone-Bot-3d61ff2d1a8b81f3a337d8b868b0e673?source=copy_link
