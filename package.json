@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "commonjs",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "tts:test": "node tts-test.js"
   },
   "engines": {
     "node": ">=22.12.0"
