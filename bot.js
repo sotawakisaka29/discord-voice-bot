@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+const path = require("node:path");
 const {
   Client,
   Events,
@@ -10,9 +11,13 @@ const {
   SlashCommandBuilder,
 } = require("discord.js");
 const {
+  AudioPlayerStatus,
+  createAudioPlayer,
+  createAudioResource,
   entersState,
   getVoiceConnection,
   joinVoiceChannel,
+  NoSubscriberBehavior,
   VoiceConnectionStatus,
 } = require("@discordjs/voice");
 
@@ -36,6 +41,9 @@ const commands = [
   new SlashCommandBuilder()
     .setName("leave")
     .setDescription("ボイスチャンネルから退出します。"),
+  new SlashCommandBuilder()
+    .setName("play")
+    .setDescription("固定のテスト音を再生します。"),
 ].map((command) => command.toJSON());
 
 const client = new Client({
@@ -73,6 +81,33 @@ client.on(Events.InteractionCreate, async (interaction) => {
     connection.destroy();
     await interaction.reply({
       content: "ボイスチャンネルから退出しました。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (interaction.commandName === "play") {
+    const connection = getVoiceConnection(interaction.guildId);
+    if (!connection) {
+      await interaction.reply({
+        content: "先に /join でボイスチャンネルへ接続してください。",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const player = createAudioPlayer({
+      behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
+    });
+    const subscription = connection.subscribe(player);
+    const resource = createAudioResource(path.join(__dirname, "assets", "test.mp3"));
+
+    player.once(AudioPlayerStatus.Idle, () => subscription?.unsubscribe());
+    player.on("error", (error) => console.error("Audio playback failed:", error));
+    player.play(resource);
+
+    await interaction.reply({
+      content: "テスト音を再生します。",
       flags: MessageFlags.Ephemeral,
     });
     return;
