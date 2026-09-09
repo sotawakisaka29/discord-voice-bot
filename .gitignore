@@ -1,56 +1,57 @@
-+# Environment variables and secrets
-+.env
-+.env.*
-+!.env.example
-+*.pem
-+*.key
-+*.crt
-+
-+# Python
-+__pycache__/
-+*.py[cod]
-+*.so
-+.Python
-+.venv/
-+venv/
-+env/
-+.pytest_cache/
-+.mypy_cache/
-+.ruff_cache/
-+.coverage
-+coverage.xml
-+htmlcov/
-+build/
-+dist/
-+*.egg-info/
-+
-+# Node.js (if used for tooling)
-+node_modules/
-+npm-debug.log*
-+yarn-debug.log*
-+yarn-error.log*
-+pnpm-debug.log*
-+
-+# Voice data, models, and generated media
-+audio/
-+recordings/
-+datasets/
-+models/
-+outputs/
-+generated_audio/
-+*.wav
-+*.mp3
-+*.m4a
-+*.flac
-+*.ogg
-+
-+# Runtime files and logs
-+logs/
-+*.log
-+*.pid
-+
-+# Editors and operating systems
-+.DS_Store
-+.idea/
-+.vscode/
-+*.swp
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Node.js (if used for tooling)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Voice data, models, and generated media
+audio/
+recordings/
+datasets/
+models/
+outputs/
+generated_audio/
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+
+# Runtime files and logs
+logs/
+*.log
+*.pid
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
