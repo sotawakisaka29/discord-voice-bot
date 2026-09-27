@@ -48,6 +48,7 @@ generated_audio/
 data/*
 !data/.gitkeep
 logs/
+development-logs/
 *.log
 *.pid
 
@@ -56,3 +57,5 @@ logs/
 .idea/
 .vscode/
 *.swp
+/metadata/
+/relation.csv
