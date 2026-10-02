@@ -1,26 +1,25 @@
 {
-  "voices": [
+  "defaultVoiceId" : "wakiso",
+  "voices" : [
     {
-      "id": "kyoko",
-      "label": "Kyoko (macOS)",
-      "engine": "macos",
-      "macosVoice": "com.apple.voice.compact.ja-JP.Kyoko"
+      "engine" : "macos",
+      "id" : "kyoko",
+      "label" : "Kyoko (macOS)",
+      "macosVoice" : "com.apple.voice.compact.ja-JP.Kyoko"
     },
     {
-      "id": "local-gpt-sovits",
-      "label": "GPT-SoVITS (local)",
-      "engine": "gpt-sovits",
-      "apiUrl": "http://127.0.0.1:9881/tts",
-      "referenceAudioPath": "/Users/wakisakasota/Desktop/開発/GPT-SoVITS/ref_audios/input-9s.wav",
-      "promptText": "こんにちは。今日はボイスクローンのテストをしています。聞き取りやすい声で、自然に話せるか確認します。",
-      "promptLanguage": "ja",
-      "textLanguage": "ja"
+      "apiUrl" : "http://127.0.0.1:5000/tts",
+      "engine" : "style-bert-vits2",
+      "id" : "wakiso",
+      "label" : "wakiso",
+      "modelId" : "wakiso"
     },
     {
-      "id": "local-style-bert-vits2",
-      "label": "自分の声（Style-Bert-VITS2）",
-      "engine": "style-bert-vits2",
-      "apiUrl": "http://127.0.0.1:5000/tts"
+      "apiUrl" : "http://127.0.0.1:5000/tts",
+      "engine" : "style-bert-vits2",
+      "id" : "yucchin",
+      "label" : "Yucchin",
+      "modelId" : "yucchin"
     }
   ]
 }

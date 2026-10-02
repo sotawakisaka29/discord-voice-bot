@@ -1,0 +1,15 @@
+{
+  "name": "voice-recording-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync:prompts": "node scripts/sync-prompts.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.3"
+  }
+}

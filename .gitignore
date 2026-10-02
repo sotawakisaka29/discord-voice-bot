@@ -45,10 +45,12 @@ generated_audio/
 *.ogg
 
 # Runtime files and logs
+.runtime/
 data/*
 !data/.gitkeep
 logs/
 development-logs/
+DerivedData/
 *.log
 *.pid
 

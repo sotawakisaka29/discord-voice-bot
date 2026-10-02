@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="description" content="収録データを確認する管理者専用画面です。">
+    <title>収録管理 · 音声収録</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/admin/admin.css">
+  </head>
+  <body>
+    <div class="background-grid" aria-hidden="true"></div>
+    <main class="admin-shell">
+      <header class="site-header">
+        <a class="brand" href="/admin/" aria-label="収録管理 ホーム">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span>収録管理</span>
+        </a>
+        <nav class="admin-header-actions" aria-label="画面の移動">
+          <a href="/">録音画面へ戻る</a>
+          <span class="admin-mark">ADMIN ONLY</span>
+        </nav>
+      </header>
+
+      <section id="admin-login" class="admin-login" aria-labelledby="login-title">
+        <form id="admin-login-form" class="setup-card admin-login-card">
+          <p class="eyebrow">SECURE ACCESS</p>
+          <h1 id="login-title">管理者ログイン</h1>
+          <p>参加者の録音データを確認するため、管理者パスワードを入力してください。</p>
+          <label class="field-label" for="admin-password">管理者パスワード</label>
+          <input id="admin-password" name="password" type="password" autocomplete="current-password" required>
+          <p id="login-error" class="form-error" role="alert"></p>
+          <button class="primary-button" type="submit">ログイン</button>
+        </form>
+      </section>
+
+      <section id="admin-dashboard" class="admin-dashboard" hidden aria-labelledby="dashboard-title">
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">RECORDING LIBRARY</p>
+            <h1 id="dashboard-title">参加者の録音</h1>
+          </div>
+          <div class="dashboard-actions">
+            <button id="refresh-button" class="secondary-button" type="button">更新</button>
+            <button id="logout-button" class="text-button" type="button">ログアウト</button>
+          </div>
+        </div>
+
+        <div class="summary-grid" aria-label="収録状況の概要">
+          <div><span>参加者</span><strong id="participant-count">0</strong></div>
+          <div><span>保存済み音声</span><strong id="recording-count">0</strong></div>
+          <div><span>完了者</span><strong id="complete-count">0</strong></div>
+        </div>
+
+        <div class="library-controls">
+          <label for="participant-search">参加者を検索</label>
+          <input id="participant-search" type="search" placeholder="名前を入力" autocomplete="off">
+        </div>
+
+        <p id="dashboard-status" class="dashboard-status" role="status">データを読み込んでいます…</p>
+        <div id="participant-list" class="participant-list"></div>
+        <div id="empty-state" class="empty-state" hidden>
+          <strong>表示できる録音がありません</strong>
+          <p>参加者が録音を保存すると、ここに表示されます。</p>
+        </div>
+      </section>
+    </main>
+    <div id="admin-toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="/admin/admin.js"></script>
+  </body>
+</html>

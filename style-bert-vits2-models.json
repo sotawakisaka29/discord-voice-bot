@@ -1,0 +1,14 @@
+{
+  "defaultModelId": "wakiso",
+  "preloadModelIds": ["wakiso", "yucchin"],
+  "models": {
+    "wakiso": {
+      "modelDir": "model_assets/discord_voice",
+      "modelFile": "discord_voice_e50_s1326.safetensors"
+    },
+    "yucchin": {
+      "modelDir": "model_assets/Yucchin",
+      "modelFile": "Yucchin_e50_s1250.safetensors"
+    }
+  }
+}

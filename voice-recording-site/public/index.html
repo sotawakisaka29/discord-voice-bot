@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="指定された文章を順番に録音し、安全に提出するためのサイトです。">
+    <title>音声収録</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="background-grid" aria-hidden="true"></div>
+    <main class="shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="音声収録 ホーム">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span>音声収録</span>
+        </a>
+        <span class="privacy-mark">録音データは非公開で保存</span>
+      </header>
+
+      <section id="setup" class="setup-layout" aria-label="録音の開始設定">
+        <div class="setup-intro">
+          <p class="eyebrow">VOICE SESSION</p>
+          <dl class="session-facts">
+            <div><dt>文章数</dt><dd>100</dd></div>
+            <div><dt>保存形式</dt><dd>WAV</dd></div>
+            <div><dt>所要時間</dt><dd>約20〜30分</dd></div>
+          </dl>
+        </div>
+
+        <form id="setup-form" class="setup-card">
+          <div>
+            <span class="step-label">はじめる前に</span>
+            <h2>お名前と同意の確認</h2>
+          </div>
+          <label class="field-label" for="name">お名前</label>
+          <input id="name" name="name" type="text" maxlength="40" autocomplete="name" placeholder="例：山田 太郎" required>
+          <fieldset>
+            <legend>すべての項目を確認してください</legend>
+            <label class="check-row"><input type="checkbox" name="purpose" required><span>依頼者から録音の利用目的について説明を受け、内容を理解しました。</span></label>
+            <label class="check-row"><input type="checkbox" name="voiceData" required><span>録音した音声が、説明された目的の範囲で保存・処理されることに同意します。</span></label>
+            <label class="check-row"><input type="checkbox" name="safeContent" required><span>周囲の人の声や、個人情報・秘密情報が録音に入らない環境で収録します。</span></label>
+          </fieldset>
+          <p id="setup-error" class="form-error" role="alert"></p>
+          <button class="primary-button" type="submit">録音を始める</button>
+        </form>
+      </section>
+
+      <section id="workspace" class="workspace" hidden aria-labelledby="prompt-text">
+        <div class="progress-panel">
+          <div>
+            <p class="eyebrow">RECORDING SESSION</p>
+            <p class="participant"><span id="participant-name"></span> さん</p>
+          </div>
+          <div class="progress-copy">
+            <span id="progress-text">0 / 100 完了</span>
+            <progress id="progress-bar" value="0" max="100">0%</progress>
+          </div>
+        </div>
+
+        <div id="complete-panel" class="complete-panel" hidden>
+          <span aria-hidden="true">✓</span>
+          <div><strong>すべての録音が完了しました</strong><p>ご協力ありがとうございました。必要であれば保存済みの文章も録り直せます。</p></div>
+        </div>
+
+        <article class="recording-card">
+          <div class="jump-control">
+            <label for="prompt-jump">文章を選ぶ</label>
+            <select id="prompt-jump" aria-label="録音する文章を選ぶ"></select>
+          </div>
+          <div class="recording-meta">
+            <span id="item-counter" class="counter">1 / 100</span>
+            <span id="filename" class="filename">0001.wav</span>
+            <span id="saved-badge" class="saved-badge" hidden>保存済み</span>
+          </div>
+          <h1 id="prompt-text" class="prompt-text">文章を読み込んでいます</h1>
+
+          <div class="recording-console">
+            <div class="recording-state">
+              <span class="recording-dot" aria-hidden="true"></span>
+              <span id="recording-status">録音の準備ができています</span>
+            </div>
+            <time id="timer">00:00</time>
+            <div class="recording-controls">
+              <button id="record-button" class="record-button" type="button"><span aria-hidden="true"></span>録音する</button>
+              <button id="stop-button" class="stop-button" type="button" disabled><span aria-hidden="true"></span>停止</button>
+            </div>
+            <button id="listen-saved-button" class="listen-saved-button" type="button" hidden>保存済み音声を試聴</button>
+            <audio id="playback" controls hidden></audio>
+            <div id="review-actions" class="review-actions" hidden>
+              <button id="retake-button" class="secondary-button" type="button">録り直す</button>
+              <button id="save-button" class="primary-button" type="button">この録音を保存</button>
+            </div>
+          </div>
+
+          <nav class="prompt-navigation" aria-label="文章の移動">
+            <button id="previous-button" type="button">前の文章</button>
+            <button id="next-button" type="button">次の文章</button>
+          </nav>
+        </article>
+
+        <aside class="recording-tips">
+          <strong>きれいに録るコツ</strong>
+          <span>マイクから20cmほど離れ、文章の前後に少し間を空けてください。</span>
+        </aside>
+      </section>
+
+      <footer class="site-footer">
+        <a href="/admin/">管理者はこちら</a>
+      </footer>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

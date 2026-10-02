@@ -1,0 +1,3 @@
+INVITE_CODE="replace-with-a-long-random-invite-code"
+SESSION_SECRET="replace-with-a-different-long-random-secret"
+ADMIN_PASSWORD="replace-with-a-long-unique-admin-password"

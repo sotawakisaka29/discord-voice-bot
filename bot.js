@@ -5,12 +5,19 @@ const { randomUUID } = require("node:crypto");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { promisify } = require("node:util");
+
+// GUIアプリから起動した場合も、Apple Silicon版の実行ツールを優先する。
+process.env.PATH = [
+  "/opt/homebrew/bin",
+  path.join(__dirname, ".runtime", "node", "bin"),
+  process.env.PATH,
+].filter(Boolean).join(path.delimiter);
+
 const {
   Client,
   Events,
   GatewayIntentBits,
   MessageFlags,
-  PermissionFlagsBits,
   REST,
   Routes,
   SlashCommandBuilder,
@@ -25,6 +32,16 @@ const {
   NoSubscriberBehavior,
   VoiceConnectionStatus,
 } = require("@discordjs/voice");
+const {
+  createMessageSpeechText,
+  createVoiceStateSpeechText,
+} = require("./speech-content");
+const {
+  deserializeUserVoiceSettings,
+  getUserVoiceId,
+  serializeUserVoiceSettings,
+  setUserVoiceId,
+} = require("./voice-settings");
 
 const token = process.env.DISCORD_BOT_TOKEN;
 const guildId = process.env.DISCORD_GUILD_ID;
@@ -32,10 +49,11 @@ const run = promisify(execFile);
 const playbackQueues = new Map();
 const speechGenerationChains = new Map();
 const voiceProfilesPath = path.join(__dirname, "voices.json");
-const guildVoiceSettingsPath = path.join(__dirname, "data", "guild-voices.json");
+const userVoiceSettingsPath = path.join(__dirname, "data", "user-voices.json");
 const tempDir = path.join(__dirname, "tmp");
 let voiceProfiles = new Map();
-let guildVoiceIds = new Map();
+let userVoiceIds = new Map();
+let defaultVoiceId;
 
 if (!token) {
   throw new Error("DISCORD_BOT_TOKEN が .env に設定されていません。");
@@ -71,7 +89,7 @@ const commands = [
     .setDescription("利用できる声の一覧を表示します。"),
   new SlashCommandBuilder()
     .setName("setvoice")
-    .setDescription("このサーバーで使う声を切り替えます。")
+    .setDescription("あなたの読み上げ声を切り替えます。")
     .addStringOption((option) =>
       option
         .setName("voice")
@@ -163,7 +181,8 @@ function clearPlaybackQueue(guildId) {
 
 async function loadVoiceProfiles() {
   const contents = await fs.readFile(voiceProfilesPath, "utf8");
-  const profiles = JSON.parse(contents).voices;
+  const catalog = JSON.parse(contents);
+  const profiles = catalog.voices;
   if (!Array.isArray(profiles) || profiles.length === 0) {
     throw new Error("voices.json に少なくとも1つの声を登録してください。");
   }
@@ -173,22 +192,9 @@ async function loadVoiceProfiles() {
       throw new Error("voices.json の各プロフィールには id、label、engine が必要です。");
     }
 
-    if (profile.engine === "gpt-sovits") {
-      const requiredFields = ["apiUrl", "referenceAudioPath", "promptText", "promptLanguage"];
-      const missingFields = requiredFields.filter((field) => !profile[field]);
-      if (missingFields.length > 0) {
-        throw new Error(`GPT-SoVITSプロフィール「${profile.id}」に ${missingFields.join("、")} が設定されていません。`);
-      }
-
-      const apiUrl = new URL(profile.apiUrl);
-      if (!['127.0.0.1', 'localhost', '::1'].includes(apiUrl.hostname)) {
-        throw new Error(`GPT-SoVITSプロフィール「${profile.id}」の apiUrl はローカルアドレスにしてください。`);
-      }
-    }
-
     if (profile.engine === "style-bert-vits2") {
-      if (!profile.apiUrl) {
-        throw new Error(`Style-Bert-VITS2プロフィール「${profile.id}」に apiUrl が設定されていません。`);
+      if (!profile.apiUrl || !profile.modelId) {
+        throw new Error(`Style-Bert-VITS2プロフィール「${profile.id}」に apiUrl または modelId が設定されていません。`);
       }
 
       const apiUrl = new URL(profile.apiUrl);
@@ -199,27 +205,32 @@ async function loadVoiceProfiles() {
   }
 
   voiceProfiles = new Map(profiles.map((profile) => [profile.id, profile]));
+  if (catalog.defaultVoiceId && !voiceProfiles.has(catalog.defaultVoiceId)) {
+    throw new Error(`voices.json の defaultVoiceId「${catalog.defaultVoiceId}」は登録されていません。`);
+  }
+  defaultVoiceId = catalog.defaultVoiceId || profiles[0].id;
 }
 
-async function loadGuildVoiceSettings() {
-  await fs.mkdir(path.dirname(guildVoiceSettingsPath), { recursive: true });
+async function loadUserVoiceSettings() {
+  await fs.mkdir(path.dirname(userVoiceSettingsPath), { recursive: true });
   try {
-    const contents = await fs.readFile(guildVoiceSettingsPath, "utf8");
-    guildVoiceIds = new Map(Object.entries(JSON.parse(contents)));
+    const contents = await fs.readFile(userVoiceSettingsPath, "utf8");
+    userVoiceIds = deserializeUserVoiceSettings(JSON.parse(contents));
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
 }
 
-async function saveGuildVoiceSettings() {
+async function saveUserVoiceSettings() {
   await fs.writeFile(
-    guildVoiceSettingsPath,
-    `${JSON.stringify(Object.fromEntries(guildVoiceIds), null, 2)}\n`,
+    userVoiceSettingsPath,
+    `${JSON.stringify(serializeUserVoiceSettings(userVoiceIds), null, 2)}\n`,
   );
 }
 
-function getSelectedVoice(guildId) {
-  return voiceProfiles.get(guildVoiceIds.get(guildId)) || voiceProfiles.values().next().value;
+function getSelectedVoice(guildId, userId) {
+  const savedVoiceId = getUserVoiceId(userVoiceIds, guildId, userId);
+  return voiceProfiles.get(savedVoiceId) || voiceProfiles.get(defaultVoiceId);
 }
 
 async function generateMacOsSpeech(voice, text, outputPath) {
@@ -237,35 +248,9 @@ async function generateMacOsSpeech(voice, text, outputPath) {
   }
 }
 
-async function generateGptSoVitsSpeech(voice, text, outputPath) {
-  const requestUrl = new URL(voice.apiUrl);
-  requestUrl.search = new URLSearchParams({
-    text,
-    text_lang: voice.textLanguage || "ja",
-    ref_audio_path: voice.referenceAudioPath,
-    prompt_text: voice.promptText,
-    prompt_lang: voice.promptLanguage,
-    media_type: "wav",
-    text_split_method: "cut5",
-  }).toString();
-
-  const response = await fetch(requestUrl, { signal: AbortSignal.timeout(120_000) });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`GPT-SoVITS API error (${response.status}): ${detail.slice(0, 500)}`);
-  }
-
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("audio") && !contentType.includes("octet-stream")) {
-    throw new Error(`GPT-SoVITS API returned an unexpected content type: ${contentType}`);
-  }
-
-  await fs.writeFile(outputPath, Buffer.from(await response.arrayBuffer()));
-}
-
 async function generateStyleBertVits2Speech(voice, text, outputPath) {
   const requestUrl = new URL(voice.apiUrl);
-  requestUrl.search = new URLSearchParams({ text }).toString();
+  requestUrl.search = new URLSearchParams({ text, model: voice.modelId }).toString();
 
   const response = await fetch(requestUrl, { signal: AbortSignal.timeout(120_000) });
   if (!response.ok) {
@@ -285,11 +270,6 @@ async function generateSpeech(voice, text, outputPath) {
   if (voice.engine === "macos") {
     await generateMacOsSpeech(voice, text, outputPath.replace(/\.wav$/, ".mp3"));
     return outputPath.replace(/\.wav$/, ".mp3");
-  }
-
-  if (voice.engine === "gpt-sovits") {
-    await generateGptSoVitsSpeech(voice, text, outputPath);
-    return outputPath;
   }
 
   if (voice.engine === "style-bert-vits2") {
@@ -334,7 +314,7 @@ function enqueueGeneratedSpeech(guildId, voice, text) {
 
 client.once(Events.ClientReady, async (readyClient) => {
   await loadVoiceProfiles();
-  await loadGuildVoiceSettings();
+  await loadUserVoiceSettings();
   const rest = new REST({ version: "10" }).setToken(token);
   await rest.put(
     Routes.applicationGuildCommands(readyClient.user.id, guildId),
@@ -353,7 +333,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (interaction.commandName === "voices") {
-    const selectedVoice = getSelectedVoice(interaction.guildId);
+    const selectedVoice = getSelectedVoice(interaction.guildId, interaction.user.id);
     const list = [...voiceProfiles.values()]
       .map((voice) => `${voice.id === selectedVoice.id ? "•" : " "} ${voice.id} — ${voice.label}`)
       .join("\n");
@@ -365,14 +345,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (interaction.commandName === "setvoice") {
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-      await interaction.reply({
-        content: "この操作にはサーバーの管理権限が必要です。",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
     const voiceId = interaction.options.getString("voice", true);
     const voice = voiceProfiles.get(voiceId);
     if (!voice) {
@@ -383,10 +355,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    guildVoiceIds.set(interaction.guildId, voiceId);
-    await saveGuildVoiceSettings();
+    setUserVoiceId(userVoiceIds, interaction.guildId, interaction.user.id, voiceId);
+    await saveUserVoiceSettings();
     await interaction.reply({
-      content: `読み上げる声を「${voice.label}」に切り替えました。`,
+      content: `あなたの読み上げ声を「${voice.label}」に切り替えました。`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -442,7 +414,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    const selectedVoice = getSelectedVoice(interaction.guildId);
+    const selectedVoice = getSelectedVoice(interaction.guildId, interaction.user.id);
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const text = interaction.options.getString("text", true);
 
@@ -490,15 +462,46 @@ client.on(Events.InteractionCreate, async (interaction) => {
 client.on(Events.MessageCreate, async (message) => {
   if (!message.inGuild() || message.author.bot) return;
 
-  const text = message.content.trim();
+  const text = createMessageSpeechText(message);
   if (!text || text.length > 500) return;
   if (!getVoiceConnection(message.guildId)) return;
 
-  const selectedVoice = getSelectedVoice(message.guildId);
+  const selectedVoice = getSelectedVoice(message.guildId, message.author.id);
   try {
     await enqueueGeneratedSpeech(message.guildId, selectedVoice, text);
   } catch (error) {
     console.error("Chat message speech generation failed:", error);
+  }
+});
+
+client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+  const connection = getVoiceConnection(newState.guild.id);
+  if (!connection || oldState.channelId === newState.channelId) return;
+
+  let member = newState.member || oldState.member;
+  if (!member) {
+    try {
+      member = await newState.guild.members.fetch(newState.id);
+    } catch (error) {
+      console.error("Voice state member lookup failed:", error);
+      return;
+    }
+  }
+
+  const text = createVoiceStateSpeechText({
+    oldChannelId: oldState.channelId,
+    newChannelId: newState.channelId,
+    connectedChannelId: connection?.joinConfig.channelId,
+    displayName: member?.displayName,
+    isBot: member?.user.bot,
+  });
+  if (!text) return;
+
+  const selectedVoice = getSelectedVoice(newState.guild.id, member.id);
+  try {
+    await enqueueGeneratedSpeech(newState.guild.id, selectedVoice, text);
+  } catch (error) {
+    console.error("Voice state speech generation failed:", error);
   }
 });
 
