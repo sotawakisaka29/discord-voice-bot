@@ -14,6 +14,14 @@ function createMessageSpeechText(message) {
   return parts.join(" ");
 }
 
+function isMessageFromConnectedChannel(messageChannelId, connectedChannelId) {
+  return Boolean(
+    messageChannelId
+    && connectedChannelId
+    && messageChannelId === connectedChannelId
+  );
+}
+
 function createVoiceStateSpeechText({
   oldChannelId,
   newChannelId,
@@ -37,5 +45,6 @@ function createVoiceStateSpeechText({
 module.exports = {
   createMessageSpeechText,
   createVoiceStateSpeechText,
+  isMessageFromConnectedChannel,
   replaceUrls,
 };

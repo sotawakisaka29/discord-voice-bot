@@ -5,6 +5,10 @@ const { randomUUID } = require("node:crypto");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { promisify } = require("node:util");
+const {
+  startBotControlServer,
+  stopBotControlServer,
+} = require("./bot-control-server");
 
 // GUIアプリから起動した場合も、Apple Silicon版の実行ツールを優先する。
 process.env.PATH = [
@@ -35,6 +39,7 @@ const {
 const {
   createMessageSpeechText,
   createVoiceStateSpeechText,
+  isMessageFromConnectedChannel,
 } = require("./speech-content");
 const {
   deserializeUserVoiceSettings,
@@ -44,7 +49,10 @@ const {
 } = require("./voice-settings");
 
 const token = process.env.DISCORD_BOT_TOKEN;
-const guildId = process.env.DISCORD_GUILD_ID;
+const guildIds = (process.env.DISCORD_GUILD_IDS || process.env.DISCORD_GUILD_ID || "")
+  .split(",")
+  .map((id) => id.trim())
+  .filter(Boolean);
 const run = promisify(execFile);
 const playbackQueues = new Map();
 const speechGenerationChains = new Map();
@@ -54,12 +62,14 @@ const tempDir = path.join(__dirname, "tmp");
 let voiceProfiles = new Map();
 let userVoiceIds = new Map();
 let defaultVoiceId;
+let controlServer;
+let isShuttingDown = false;
 
 if (!token) {
   throw new Error("DISCORD_BOT_TOKEN が .env に設定されていません。");
 }
-if (!guildId) {
-  throw new Error("DISCORD_GUILD_ID が .env に設定されていません。");
+if (guildIds.length === 0) {
+  throw new Error("DISCORD_GUILD_IDS が .env に設定されていません。");
 }
 
 const commands = [
@@ -67,7 +77,7 @@ const commands = [
     .setName("ping")
     .setDescription("Botの応答を確認します。"),
   new SlashCommandBuilder()
-    .setName("join")
+    .setName("joinvcb")
     .setDescription("あなたが参加中のボイスチャンネルへ接続します。"),
   new SlashCommandBuilder()
     .setName("leave")
@@ -316,12 +326,16 @@ client.once(Events.ClientReady, async (readyClient) => {
   await loadVoiceProfiles();
   await loadUserVoiceSettings();
   const rest = new REST({ version: "10" }).setToken(token);
-  await rest.put(
-    Routes.applicationGuildCommands(readyClient.user.id, guildId),
-    { body: commands },
+  await Promise.all(
+    guildIds.map((guildId) =>
+      rest.put(
+        Routes.applicationGuildCommands(readyClient.user.id, guildId),
+        { body: commands },
+      ),
+    ),
   );
   console.log(`${readyClient.user.tag} としてログインしました。`);
-  console.log("テストサーバーへスラッシュコマンドを登録しました。");
+  console.log(`${guildIds.length}個のサーバーへスラッシュコマンドを登録しました。`);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -387,7 +401,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const connection = getVoiceConnection(interaction.guildId);
     if (!connection) {
       await interaction.reply({
-        content: "先に /join でボイスチャンネルへ接続してください。",
+        content: "先に /joinvcb でボイスチャンネルへ接続してください。",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -408,7 +422,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const connection = getVoiceConnection(interaction.guildId);
     if (!connection) {
       await interaction.reply({
-        content: "先に /join でボイスチャンネルへ接続してください。",
+        content: "先に /joinvcb でボイスチャンネルへ接続してください。",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -430,7 +444,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  if (interaction.commandName !== "join") return;
+  if (interaction.commandName !== "joinvcb") return;
 
   const voiceChannel = interaction.member?.voice?.channel;
   if (!voiceChannel) {
@@ -462,9 +476,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
 client.on(Events.MessageCreate, async (message) => {
   if (!message.inGuild() || message.author.bot) return;
 
+  const connection = getVoiceConnection(message.guildId);
+  if (!isMessageFromConnectedChannel(
+    message.channelId,
+    connection?.joinConfig.channelId,
+  )) return;
+
   const text = createMessageSpeechText(message);
   if (!text || text.length > 500) return;
-  if (!getVoiceConnection(message.guildId)) return;
 
   const selectedVoice = getSelectedVoice(message.guildId, message.author.id);
   try {
@@ -505,4 +524,32 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   }
 });
 
-client.login(token);
+async function shutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  client.destroy();
+  await stopBotControlServer(controlServer);
+}
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, () => {
+    shutdown()
+      .catch((error) => console.error("Discord Botの停止処理に失敗しました:", error))
+      .finally(() => process.exit(0));
+  });
+}
+
+async function main() {
+  controlServer = await startBotControlServer({ projectPath: __dirname });
+  try {
+    await client.login(token);
+  } catch (error) {
+    await stopBotControlServer(controlServer);
+    throw error;
+  }
+}
+
+main().catch((error) => {
+  console.error(error.message || error);
+  process.exitCode = 1;
+});

@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   createMessageSpeechText,
   createVoiceStateSpeechText,
+  isMessageFromConnectedChannel,
   replaceUrls,
 } = require("../speech-content");
 
@@ -26,6 +27,12 @@ test("message text and attachments are combined for speech", () => {
     createMessageSpeechText({ content: "", attachments: new Map([["1", {}]]) }),
     "添付ファイル",
   );
+});
+
+test("messages are accepted only from the connected voice channel chat", () => {
+  assert.equal(isMessageFromConnectedChannel("voice-1", "voice-1"), true);
+  assert.equal(isMessageFromConnectedChannel("text-1", "voice-1"), false);
+  assert.equal(isMessageFromConnectedChannel("voice-1", undefined), false);
 });
 
 test("voice state changes are announced only for the connected channel", () => {

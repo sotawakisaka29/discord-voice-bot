@@ -36,6 +36,8 @@ audio/
 recordings/
 datasets/
 models/
+!DiscordVoiceCloneBot/DiscordVoiceCloneBot/Models/
+!DiscordVoiceCloneBot/DiscordVoiceCloneBot/Models/*.swift
 outputs/
 generated_audio/
 *.wav

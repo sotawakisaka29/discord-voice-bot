@@ -28,6 +28,10 @@ class MemoryBucket {
       truncated: false,
     };
   }
+
+  async delete(keys) {
+    for (const key of Array.isArray(keys) ? keys : [keys]) this.objects.delete(key);
+  }
 }
 
 function testEnv() {
@@ -184,4 +188,75 @@ test("an administrator can download a participant folder as a streamed ZIP", asy
   const zipText = new TextDecoder().decode(zip);
   assert.match(zipText, /0001\.wav/u);
   assert.match(zipText, /_profile\.json/u);
+});
+
+test("an administrator can delete a participant and all recordings", async () => {
+  const env = { ...testEnv(), ADMIN_PASSWORD: "test-admin-password" };
+  const participantResponse = await worker.fetch(new Request("https://example.test/api/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      inviteCode: "test-invite",
+      name: "削除確認",
+      consent: { purpose: true, voiceData: true, safeContent: true },
+    }),
+  }), env);
+  const participant = await participantResponse.json();
+  const wav = encodeMonoPcm16Wav(new Float32Array([0, 0.1, -0.1]));
+  await worker.fetch(new Request("https://example.test/api/recordings/0001.wav", {
+    method: "PUT",
+    headers: { "Authorization": `Bearer ${participant.token}`, "Content-Type": "audio/wav" },
+    body: wav,
+  }), env);
+
+  const loginResponse = await worker.fetch(new Request("https://example.test/api/admin/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: "test-admin-password" }),
+  }), env);
+  const admin = await loginResponse.json();
+  const deleteResponse = await worker.fetch(new Request("https://example.test/api/admin/participant", {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${admin.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ folder: participant.folder }),
+  }), env);
+
+  assert.equal(deleteResponse.status, 200);
+  assert.deepEqual(await deleteResponse.json(), { ok: true, deleted: 2 });
+  assert.equal([...env.RECORDINGS_BUCKET.objects.keys()].some((key) => key.startsWith(`recordings/${participant.folder}/`)), false);
+
+  const listResponse = await worker.fetch(new Request("https://example.test/api/admin/participants", {
+    headers: { "Authorization": `Bearer ${admin.token}` },
+  }), env);
+  assert.deepEqual((await listResponse.json()).participants, []);
+
+  const uploadAfterDeletion = await worker.fetch(new Request("https://example.test/api/recordings/0002.wav", {
+    method: "PUT",
+    headers: { "Authorization": `Bearer ${participant.token}`, "Content-Type": "audio/wav" },
+    body: wav,
+  }), env);
+  assert.equal(uploadAfterDeletion.status, 404);
+});
+
+test("participant deletion requires an administrator session and a valid folder", async () => {
+  const env = { ...testEnv(), ADMIN_PASSWORD: "test-admin-password" };
+  const unauthorized = await worker.fetch(new Request("https://example.test/api/admin/participant", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folder: `name/${crypto.randomUUID()}` }),
+  }), env);
+  assert.equal(unauthorized.status, 401);
+
+  const loginResponse = await worker.fetch(new Request("https://example.test/api/admin/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: "test-admin-password" }),
+  }), env);
+  const admin = await loginResponse.json();
+  const invalidFolder = await worker.fetch(new Request("https://example.test/api/admin/participant", {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${admin.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ folder: "../other-data" }),
+  }), env);
+  assert.equal(invalidFolder.status, 400);
 });

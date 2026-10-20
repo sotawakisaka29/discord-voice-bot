@@ -74,7 +74,39 @@ function createParticipantCard(participant) {
   const count = document.createElement("div");
   count.className = participant.files.length === 100 ? "completion-count complete" : "completion-count";
   count.innerHTML = `<strong>${participant.files.length}</strong><span>/ 100</span>`;
-  top.append(identity, count);
+  const participantActions = document.createElement("div");
+  participantActions.className = "participant-actions";
+  const deleteButton = document.createElement("button");
+  deleteButton.className = "delete-button";
+  deleteButton.type = "button";
+  deleteButton.textContent = "収録アカウントを削除";
+  deleteButton.addEventListener("click", async () => {
+    const confirmed = window.confirm(
+      `${participant.displayName}さんの収録アカウントとすべての録音を削除します。\nこの操作は取り消せません。削除しますか？`,
+    );
+    if (!confirmed) return;
+    deleteButton.disabled = true;
+    deleteButton.textContent = "削除中…";
+    try {
+      await adminApi("/api/admin/participant", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder: participant.folder }),
+      });
+      showToast(`${participant.displayName}さんの収録アカウントを削除しました`, "success");
+      await loadParticipants();
+    } catch (error) {
+      if (error.status === 401) {
+        logout();
+        return;
+      }
+      showToast(error.message, "error");
+      deleteButton.disabled = false;
+      deleteButton.textContent = "収録アカウントを削除";
+    }
+  });
+  participantActions.append(count, deleteButton);
+  top.append(identity, participantActions);
 
   const progress = document.createElement("progress");
   progress.max = 100;

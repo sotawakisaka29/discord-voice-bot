@@ -167,6 +167,32 @@ async function createAdminDownloadToken(request, env) {
   return json({ url: `/api/admin/download?token=${encodeURIComponent(token)}`, expiresAt });
 }
 
+async function deleteAdminParticipant(request, env) {
+  if (!(await requireAdmin(request, env))) return error("管理者としてログインしてください。", 401);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return error("入力内容を確認してください。");
+  }
+  if (!validRecordingFolder(body.folder)) return error("参加者フォルダの指定が正しくありません。", 400);
+
+  const prefix = `recordings/${body.folder}/`;
+  const profileKey = `${prefix}_profile.json`;
+  if (!(await env.RECORDINGS_BUCKET.get(profileKey))) {
+    return error("収録アカウントが見つかりません。", 404);
+  }
+
+  // Revoke the participant session before removing the recordings.
+  await env.RECORDINGS_BUCKET.delete(profileKey);
+  const objects = await listAllObjects(env, prefix);
+  const keys = objects.map(({ key }) => key);
+  for (let index = 0; index < keys.length; index += 1000) {
+    await env.RECORDINGS_BUCKET.delete(keys.slice(index, index + 1000));
+  }
+  return json({ ok: true, deleted: keys.length + 1 });
+}
+
 function safeArchiveRoot(profile) {
   const name = String(profile.displayName || "recordings")
     .normalize("NFKC")
@@ -299,6 +325,9 @@ async function uploadRecording(request, env, filename) {
     return error("録音ファイルの容量を確認してください。", 413);
   }
   if (!looksLikeWav(bytes)) return error("WAVファイルを確認できませんでした。", 415);
+  if (!(await env.RECORDINGS_BUCKET.get(`recordings/${session.folder}/_profile.json`))) {
+    return error("収録セッションが見つかりません。", 404);
+  }
 
   await env.RECORDINGS_BUCKET.put(`recordings/${session.folder}/${filename}`, bytes, {
     httpMetadata: { contentType: "audio/wav" },
@@ -313,6 +342,9 @@ async function uploadRecording(request, env, filename) {
 async function downloadRecording(request, env, filename) {
   const session = await requireSession(request, env);
   if (!session) return error("セッションの有効期限が切れました。もう一度最初から開始してください。", 401);
+  if (!(await env.RECORDINGS_BUCKET.get(`recordings/${session.folder}/_profile.json`))) {
+    return error("収録セッションが見つかりません。", 404);
+  }
   if (!ALLOWED_FILES.has(filename)) return error("このファイル名は録音対象に含まれていません。", 404);
 
   const object = await env.RECORDINGS_BUCKET.get(`recordings/${session.folder}/${filename}`);
@@ -333,6 +365,7 @@ async function handleApi(request, env, url) {
   if (url.pathname === "/api/admin/recording" && request.method === "GET") return getAdminRecording(request, env, url);
   if (url.pathname === "/api/admin/download-token" && request.method === "POST") return createAdminDownloadToken(request, env);
   if (url.pathname === "/api/admin/download" && request.method === "GET") return downloadAdminFolder(request, env, url);
+  if (url.pathname === "/api/admin/participant" && request.method === "DELETE") return deleteAdminParticipant(request, env);
   if (url.pathname === "/api/session" && request.method === "POST") return createSession(request, env);
   if (url.pathname === "/api/session" && request.method === "GET") return getSessionStatus(request, env);
 

@@ -18,8 +18,15 @@
       "apiUrl" : "http://127.0.0.1:5000/tts",
       "engine" : "style-bert-vits2",
       "id" : "yucchin",
-      "label" : "Yucchin",
+      "label" : "yucchin",
       "modelId" : "yucchin"
+    },
+    {
+      "apiUrl" : "http://127.0.0.1:5000/tts",
+      "engine" : "style-bert-vits2",
+      "id" : "teffy",
+      "label" : "teffy",
+      "modelId" : "teffy"
     }
   ]
 }

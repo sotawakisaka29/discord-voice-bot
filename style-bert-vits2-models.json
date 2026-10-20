@@ -4,11 +4,15 @@
   "models": {
     "wakiso": {
       "modelDir": "model_assets/discord_voice",
-      "modelFile": "discord_voice_e50_s1326.safetensors"
+      "modelFile": "discord_voice_e100_s5100.safetensors"
     },
     "yucchin": {
       "modelDir": "model_assets/Yucchin",
       "modelFile": "Yucchin_e50_s1250.safetensors"
+    },
+    "teffy": {
+      "modelDir": "model_assets/Teffy",
+      "modelFile": "Teffy_e79_s4000.safetensors"
     }
   }
 }
