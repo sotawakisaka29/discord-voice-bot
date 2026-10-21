@@ -27,6 +27,13 @@
       "id" : "teffy",
       "label" : "teffy",
       "modelId" : "teffy"
+    },
+    {
+      "apiUrl" : "http://127.0.0.1:5000/tts",
+      "engine" : "style-bert-vits2",
+      "id" : "hanacham",
+      "label" : "hanacham",
+      "modelId" : "hanacham"
     }
   ]
 }

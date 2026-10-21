@@ -13,6 +13,10 @@
     "teffy": {
       "modelDir": "model_assets/Teffy",
       "modelFile": "Teffy_e79_s4000.safetensors"
+    },
+    "hanacham": {
+      "modelDir": "model_assets/Hanacham",
+      "modelFile": "Hanacham_e79_s4000.safetensors"
     }
   }
 }

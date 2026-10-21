@@ -47,6 +47,7 @@ const {
   serializeUserVoiceSettings,
   setUserVoiceId,
 } = require("./voice-settings");
+const { shouldDisconnectFromEmptyChannel } = require("./voice-channel-state");
 
 const token = process.env.DISCORD_BOT_TOKEN;
 const guildIds = (process.env.DISCORD_GUILD_IDS || process.env.DISCORD_GUILD_ID || "")
@@ -497,6 +498,20 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   const connection = getVoiceConnection(newState.guild.id);
   if (!connection || oldState.channelId === newState.channelId) return;
 
+  const connectedChannelId = connection.joinConfig.channelId;
+  const connectedChannel = newState.guild.channels.cache.get(connectedChannelId)
+    || oldState.channel;
+  if (shouldDisconnectFromEmptyChannel({
+    oldChannelId: oldState.channelId,
+    newChannelId: newState.channelId,
+    connectedChannelId,
+    members: connectedChannel?.members,
+  })) {
+    clearPlaybackQueue(newState.guild.id);
+    connection.destroy();
+    return;
+  }
+
   let member = newState.member || oldState.member;
   if (!member) {
     try {
@@ -510,7 +525,7 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   const text = createVoiceStateSpeechText({
     oldChannelId: oldState.channelId,
     newChannelId: newState.channelId,
-    connectedChannelId: connection?.joinConfig.channelId,
+    connectedChannelId,
     displayName: member?.displayName,
     isBot: member?.user.bot,
   });
